@@ -1,0 +1,16 @@
+{
+  "name": "wechat-opencode",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "bun test",
+    "test:watch": "bun test --watch"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@opencode-ai/sdk": "^1.17.9",
+    "@types/bun": "latest",
+    "typescript": "latest"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "opencode": {
+    "base_url": "http://127.0.0.1:4096"
+  },
+  "wechat": {
+    "state_dir": ".runtime",
+    "poll_interval_ms": 35000,
+    "max_reply_chars": 6000
+  },
+  "projects": [
+    { "id": "myapp", "name": "My App", "dir": "/path/to/myapp" }
+  ]
+}
