@@ -6,37 +6,64 @@ describe("bridge router", () => {
     help: () => "帮助信息",
     status: async () => "状态信息",
     newSession: async () => "新会话已创建",
-    projects: async () => "项目列表",
-    listSessions: async () => "会话列表",
-    selectProject: async (id: string) => `已选择 ${id}`,
-    selectSession: async (id: string) => `已选择会话 ${id}`,
+    projects: async (_u: string, _c: string, arg?: string) => arg ? `已选择 ${arg}` : "项目列表",
+    listSessions: async (_u: string, _c: string, arg?: string) => arg === "new" ? "新会话已创建" : arg ? `已选择会话 ${arg}` : "会话列表",
+    model: async (_u: string, _c: string, arg?: string) => arg ? `已选择模型 ${arg}` : "模型列表",
+    abort: async () => "已中止",
   }
 
   const router = createRouter(mockHandlers as any)
 
   test("routes commands to matching handler", async () => {
-    const result = await router.route("READY", "/help")
+    const result = await router.route("/help")
+    expect(result.action).toBe("reply")
     expect(result.text).toBe("帮助信息")
   })
 
+  test("routes command with argument", async () => {
+    const result = await router.route("/projects 1")
+    expect(result.action).toBe("reply")
+    expect(result.text).toBe("已选择 1")
+  })
+
+  test("routes command with new subcommand", async () => {
+    const result = await router.route("/sessions new")
+    expect(result.action).toBe("reply")
+    expect(result.text).toBe("新会话已创建")
+  })
+
   test("routes unknown command to fallback", async () => {
-    const result = await router.route("READY", "/unknown")
+    const result = await router.route("/unknown")
     expect(result.text).toContain("未知命令")
   })
 
-  test("routes non-command message to queue in READY state", async () => {
-    const result = await router.route("READY", "hello")
+  test("routes /model command", async () => {
+    const result = await router.route("/model")
+    expect(result.action).toBe("reply")
+    expect(result.text).toBe("模型列表")
+  })
+
+  test("routes /model with arg", async () => {
+    const result = await router.route("/model 2")
+    expect(result.action).toBe("reply")
+    expect(result.text).toBe("已选择模型 2")
+  })
+
+  test("routes non-command message to enqueue", async () => {
+    const result = await router.route("hello")
     expect(result.action).toBe("enqueue")
     expect(result.text).toBe("hello")
   })
 
-  test("routes message to project select in NO_PROJECT state", async () => {
-    const result = await router.route("NO_PROJECT", "hello")
-    expect(result.action).toBe("select_project")
+  test("routes /abort command", async () => {
+    const result = await router.route("/abort")
+    expect(result.action).toBe("reply")
+    expect(result.text).toBe("已中止")
   })
 
-  test("routes message to session select in SESSION_SELECT state", async () => {
-    const result = await router.route("SESSION_SELECT", "1")
-    expect(result.action).toBe("select_session")
+  test("handles empty text as reply", async () => {
+    const result = await router.route("")
+    expect(result.action).toBe("reply")
+    expect(result.text).toBe("")
   })
 })

@@ -1,127 +1,89 @@
 import { loadConfig } from "./config"
 import { StateStore } from "./state"
-import { createLoginClient } from "./login"
-import { createPoller } from "./poller"
-import { createSender } from "./sender"
 import { createSessionClient } from "./session"
 import { createCommandHandlers } from "./commands"
 import { createRouter } from "./bridge"
 import type { AppConfig } from "./types"
-
-export interface BridgeContext {
-  config: AppConfig
-  state: StateStore
-  login: ReturnType<typeof createLoginClient>
-  session: ReturnType<typeof createSessionClient>
-  sender: ReturnType<typeof createSender>
-  poller: ReturnType<typeof createPoller>
-  handlers: ReturnType<typeof createCommandHandlers>
-  router: ReturnType<typeof createRouter>
-}
+import { WeChatBot } from "@wechatbot/wechatbot"
+import type { IncomingMessage } from "@wechatbot/wechatbot"
 
 export async function processPrompt(
   session: ReturnType<typeof createSessionClient>,
   text: string,
   sessionId: string,
+  model?: { providerID: string; modelID: string },
 ): Promise<string> {
-  await session.prompt(sessionId, text)
-  await session.wait(sessionId)
-  const messages = await session.getMessages(sessionId)
-  const reply = session.extractAssistantText(messages)
-  return reply ?? "AI 未产生文本回复"
+  return session.promptAndWait(sessionId, text, model)
 }
 
-export async function startBridge(ctx: BridgeContext, signal?: AbortSignal): Promise<void> {
-  const { config, state, login, session, sender, poller, handlers, router } = ctx
-
-  let token: string
-
-  const acct = await state.getAccount()
-  if (acct) {
-    token = acct.token
-  } else {
-    console.log("需要扫码登录...")
-    const ls = await login.waitForLogin()
-    token = ls.token
-    await state.setAccount({
-      account_id: ls.account_id,
-      token: ls.token,
-      base_url: ls.base_url,
-      saved_at: new Date().toISOString(),
-    })
+export async function startBridge(
+  bot: WeChatBot,
+  state: StateStore,
+  session: ReturnType<typeof createSessionClient>,
+  signal?: AbortSignal,
+): Promise<void> {
+  if (signal) {
+    signal.addEventListener("abort", () => bot.stop())
   }
+
+  const creds = await bot.login({
+    callbacks: {
+      onQrUrl: async (url) => {
+        console.log("需要扫码登录...")
+        const { default: QRCode } = await import("qrcode")
+        const s = await QRCode.toString(url, { type: "terminal", small: true })
+        console.log(s)
+        console.log(`或复制链接到浏览器打开:\n  ${url}`)
+      },
+      onScanned: () => console.log("二维码已扫描，请在手机上确认..."),
+    },
+  })
+  console.log(`登录成功: ${creds.accountId}`)
+
+  await state.setAccount({
+    account_id: creds.accountId,
+    token: creds.token,
+    base_url: creds.baseUrl,
+    user_id: creds.userId,
+    saved_at: new Date().toISOString(),
+  })
+
+  const handlers = createCommandHandlers({ session, state })
+  const router = createRouter(handlers)
 
   const proj = await state.getProject()
   const runtime = await state.getRuntime()
+  if (proj) console.log(`当前项目: ${proj.name} (${proj.dir})`)
+  if (runtime?.session_id) console.log(`当前会话: ${runtime.session_id}`)
 
-  let botStatus: string = "READY"
-  if (!proj) botStatus = "NO_PROJECT"
-  else if (!runtime?.session_id) botStatus = "SESSION_SELECT"
+  console.log("开始监听消息...")
 
-  console.log(`状态: ${botStatus}`)
+  bot.onMessage(async (msg: IncomingMessage) => {
+    const text = msg.text?.trim() || ""
+    console.log(`收到消息: ${text}`)
 
-  let pollBuf = runtime?.poll_buf ?? ""
-  let abortRequested = false
+    const r = await router.route(text, msg.userId, msg._contextToken ?? "")
+    console.log(`路由结果: ${r.action}`)
 
-  for (;;) {
-    if (signal?.aborted) break
-
-    const result = await poller.poll(pollBuf)
-    if (result.buf) pollBuf = result.buf
-
-    if (result.error) {
-      console.error(`轮询错误: ${result.error}`)
-      if (result.error === "SESSION_EXPIRED" || result.error === "TOKEN_INVALID") {
-        console.log("Token 过期，重新登录...")
-        const ls = await login.waitForLogin()
-        token = ls.token
-        sender.setToken(token)
-        poller.setToken(token)
-        await state.setAccount({
-          account_id: ls.account_id,
-          token: ls.token,
-          base_url: ls.base_url,
-          saved_at: new Date().toISOString(),
-        })
+    if (r.action === "enqueue") {
+      const rt = await state.getRuntime()
+      if (!rt?.session_id) {
+        await bot.reply(msg, "请先选择项目和会话\n/projects - 查看项目列表\n/sessions - 查看/创建会话")
+        return
       }
-      continue
+      try {
+        const replyText = await processPrompt(session, text, rt.session_id, rt.model)
+        await bot.reply(msg, replyText)
+      } catch (e) {
+        console.error("处理消息失败:", e)
+        await bot.reply(msg, "AI 处理异常，请重试")
+      }
+    } else {
+      await bot.reply(msg, r.text)
     }
+  })
 
-    for (const msg of result.messages) {
-      if (abortRequested) {
-        abortRequested = false
-        continue
-      }
-
-      if (msg.text === "/abort") {
-        abortRequested = true
-        await sender.sendMessage(msg.from_user_id, "正在等待当前任务完成，完成后将中止", msg.context_token)
-        continue
-      }
-
-      const r = await router.route(botStatus as any, msg.text, msg.from_user_id, msg.context_token)
-
-      if (r.action === "enqueue") {
-        const reply = await processPrompt(session, msg.text, runtime?.session_id ?? "")
-        if (abortRequested) {
-          abortRequested = false
-          await sender.sendMessage(msg.from_user_id, "当前任务已完成，后续消息已中止", msg.context_token)
-          continue
-        }
-        await sender.sendAdaptive(msg.from_user_id, reply, msg.context_token)
-      } else if (r.action === "reply") {
-        await sender.sendMessage(msg.from_user_id, r.text, msg.context_token)
-      } else if (r.action === "select_project") {
-        const reply = await handlers.selectProject(msg.text, msg.from_user_id, msg.context_token)
-        botStatus = "SESSION_SELECT"
-        await sender.sendMessage(msg.from_user_id, reply, msg.context_token)
-      } else if (r.action === "select_session") {
-        const reply = await handlers.selectSession(msg.text, msg.from_user_id, msg.context_token)
-        botStatus = "READY"
-        await sender.sendMessage(msg.from_user_id, reply, msg.context_token)
-      }
-    }
-  }
+  await bot.start()
 }
 
 async function main() {
@@ -129,26 +91,44 @@ async function main() {
   const cmd = args[0]
 
   if (cmd === "login") {
-    const login = createLoginClient()
-    const session = await login.waitForLogin()
-    console.log(`登录成功: ${session.account_id}`)
+    const bot = new WeChatBot({ storage: "file", logLevel: "info" })
+    const creds = await bot.login({
+      force: true,
+      callbacks: {
+        onQrUrl: async (url) => {
+          console.log("需要扫码登录...")
+          const { default: QRCode } = await import("qrcode")
+          const s = await QRCode.toString(url, { type: "terminal", small: true })
+          console.log(s)
+          console.log(`或复制链接到浏览器打开:\n  ${url}`)
+        },
+        onScanned: () => console.log("二维码已扫描，请在手机上确认..."),
+      },
+    })
+    const config = await loadConfig("wechat-opencode.json")
+    const state = new StateStore(config.wechat.state_dir)
+    await state.setAccount({
+      account_id: creds.accountId,
+      token: creds.token,
+      base_url: creds.baseUrl,
+      user_id: creds.userId,
+      saved_at: new Date().toISOString(),
+    })
+    console.log(`\n登录成功: ${creds.accountId}`)
     return
   }
 
   if (cmd === "start") {
     const config = await loadConfig("wechat-opencode.json")
     const state = new StateStore(config.wechat.state_dir)
-    const login = createLoginClient()
-    const session = createSessionClient({ baseUrl: config.opencode.base_url })
-    const acct = await state.getAccount()
-    const token = acct?.token ?? ""
-    const sender = createSender(token)
-    const poller = createPoller(token)
-    const handlers = createCommandHandlers({ sender, session, state })
-    const router = createRouter(handlers)
-    await startBridge({
-      config, state, login, session, sender, poller, handlers, router,
+    const session = createSessionClient(config.opencode.base_url)
+
+    const bot = new WeChatBot({
+      storage: "file",
+      logLevel: "info",
     })
+
+    await startBridge(bot, state, session)
     return
   }
 

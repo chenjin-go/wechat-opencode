@@ -1,18 +1,16 @@
-type BotStatus = "NO_PROJECT" | "SESSION_SELECT" | "READY"
-
 interface RouteResult {
-  action: "reply" | "enqueue" | "select_project" | "select_session"
+  action: "reply" | "enqueue"
   text: string
 }
 
 interface Handlers {
-  help(userId: string, ctx: string): string | Promise<string>
-  status(userId: string, ctx: string): string | Promise<string>
-  newSession(userId: string, ctx: string): string | Promise<string>
-  projects(userId: string, ctx: string): string | Promise<string>
-  listSessions(userId: string, ctx: string): string | Promise<string>
-  selectProject(projectId: string, userId: string, ctx: string): string | Promise<string>
-  selectSession(sessionIdOrNew: string, userId: string, ctx: string): string | Promise<string>
+  help(userId: string, ctx: string, arg?: string): string | Promise<string>
+  status(userId: string, ctx: string, arg?: string): string | Promise<string>
+  newSession(userId: string, ctx: string, arg?: string): string | Promise<string>
+  projects(userId: string, ctx: string, arg?: string): string | Promise<string>
+  listSessions(userId: string, ctx: string, arg?: string): string | Promise<string>
+  model(userId: string, ctx: string, arg?: string): string | Promise<string>
+  abort(userId: string, ctx: string, arg?: string): string | Promise<string>
 }
 
 const COMMAND_MAP: Record<string, keyof Handlers> = {
@@ -21,31 +19,30 @@ const COMMAND_MAP: Record<string, keyof Handlers> = {
   new: "newSession",
   projects: "projects",
   sessions: "listSessions",
+  model: "model",
+  abort: "abort",
 }
 
 export function createRouter(handlers: Handlers) {
   async function route(
-    status: BotStatus,
     text: string,
     userId = "",
     ctx = ""
   ): Promise<RouteResult> {
-    if (status === "NO_PROJECT") {
-      return { action: "select_project", text }
+    if (!text) {
+      return { action: "reply", text: "" }
     }
-    if (status === "SESSION_SELECT") {
-      return { action: "select_session", text }
-    }
-
     if (!text.startsWith("/")) {
       return { action: "enqueue", text }
     }
 
-    const cmd = text.slice(1).split(/\s+/)[0]
+    const parts = text.slice(1).split(/\s+/)
+    const cmd = parts[0]
+    const arg = parts.slice(1).join(" ")
     const handler = COMMAND_MAP[cmd]
 
     if (handler) {
-      const reply = await (handlers[handler] as Function)(userId, ctx)
+      const reply = await (handlers[handler] as Function)(userId, ctx, arg || undefined)
       return { action: "reply", text: reply }
     }
 

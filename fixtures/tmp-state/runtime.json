@@ -1,5 +1,4 @@
 {
-  "status": "READY",
   "session_id": "ses_123",
   "last_poll_at": "2026-06-22T00:00:00",
   "poll_buf": "buf_abc"

@@ -49,7 +49,6 @@ describe("StateStore", () => {
   test("saves and loads runtime", async () => {
     const store = new StateStore(tmpDir)
     await store.setRuntime({
-      status: "READY",
       session_id: "ses_123",
       last_poll_at: "2026-06-22T00:00:00",
       poll_buf: "buf_abc",
@@ -57,7 +56,6 @@ describe("StateStore", () => {
 
     const loaded = await store.getRuntime()
     expect(loaded).not.toBeNull()
-    expect(loaded!.status).toBe("READY")
     expect(loaded!.session_id).toBe("ses_123")
   })
 })

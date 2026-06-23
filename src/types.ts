@@ -24,6 +24,7 @@ export interface AccountState {
   account_id: string
   token: string
   base_url: string
+  user_id: string
   saved_at: string
 }
 
@@ -33,11 +34,14 @@ export interface ProjectState {
   name: string
 }
 
+export interface ModelRef {
+  providerID: string
+  modelID: string
+}
+
 export interface RuntimeState {
-  status: "NO_PROJECT" | "SESSION_SELECT" | "READY"
   session_id?: string
+  model?: ModelRef
   last_poll_at?: string
   poll_buf?: string
 }
-
-export type BotStatus = "NO_LOGIN" | "NO_PROJECT" | "SESSION_SELECT" | "READY"

@@ -1,7 +1,4 @@
-interface SessionClientOptions {
-  baseUrl: string
-  fetch?: typeof fetch
-}
+import { createOpencodeClient } from "@opencode-ai/sdk/v2"
 
 interface ProjectInfo {
   id: string
@@ -15,87 +12,113 @@ interface SessionInfo {
   time: { updated: string }
 }
 
-interface V2Message {
-  info: {
-    role: string
-    parentID?: string
-  }
-  parts: Array<{
-    type: string
-    text?: string
-  }>
+export interface ModelInfo {
+  id: string
+  model: { providerID: string; modelID: string }
+  name: string
 }
 
-export function createSessionClient(opts: SessionClientOptions) {
-  const baseUrl = opts.baseUrl
-  const f = opts.fetch ?? fetch
+export interface V2Message {
+  info: { role: string; [key: string]: unknown }
+  parts: Array<{ type: string; text?: string; [key: string]: unknown }>
+}
 
-  async function json(method: string, path: string, body?: any): Promise<any> {
-    const init: RequestInit = { method, headers: {} }
-    if (body) {
-      init.body = JSON.stringify(body)
-      init.headers = { "Content-Type": "application/json" }
-    }
-    const url = path.startsWith("http") ? path : `${baseUrl}${path}`
-    const res = await f(url, init)
-    const text = await res.text()
-    if (!text) return null
-    return JSON.parse(text)
-  }
+export function createSessionClient(baseUrl: string) {
+  const client = createOpencodeClient({ baseUrl })
 
   async function listProjects(): Promise<ProjectInfo[]> {
-    return json("GET", "/project")
+    const { data } = await client.project.list()
+    return data!
   }
 
-  async function createSession(): Promise<string> {
-    const res = await json("POST", "/session", {})
-    return res.id
+  async function getCurrentProject(): Promise<ProjectInfo | null> {
+    const { data } = await client.project.current()
+    return data ?? null
   }
 
-  async function listSessions(directory: string, limit?: number): Promise<SessionInfo[]> {
-    const params = new URLSearchParams({ order: "desc" })
-    if (limit) params.set("limit", String(limit))
-    const list: any[] = await json("GET", `/session?${params}`) ?? []
-    return list.slice(0, limit).map((s: any) => ({
+  async function createSession(directory?: string): Promise<string> {
+    const { data } = directory
+      ? await client.session.create({ directory })
+      : await client.session.create({})
+    return data!.id
+  }
+
+  async function listSessions(limit?: number, projectId?: string): Promise<SessionInfo[]> {
+    const { data } = await client.v2.session.list({ limit: limit ?? 5, project: projectId })
+    return data!.data.map((s) => ({
       id: s.id,
       title: s.title,
-      time: { updated: s.time?.updated ? String(s.time.updated) : "" },
+      time: { updated: String(s.time.updated) },
     }))
   }
 
-  async function prompt(sessionId: string, text: string): Promise<void> {
-    await json("POST", `/session/${sessionId}/prompt_async`, {
+  async function listModels(): Promise<ModelInfo[]> {
+    const { data } = await client.config.providers()
+    const models: ModelInfo[] = []
+    for (const p of data!.providers) {
+      for (const [, m] of Object.entries(p.models)) {
+        models.push({
+          id: `${p.id}/${m.id}`,
+          model: { providerID: p.id, modelID: m.id },
+          name: `${p.name} - ${m.name}`,
+        })
+      }
+    }
+    return models
+  }
+
+  async function prompt(sessionId: string, text: string, model?: { providerID: string; modelID: string }): Promise<string> {
+    const opts: Record<string, unknown> = {
+      sessionID: sessionId,
       parts: [{ type: "text", text }],
-    })
+    }
+    if (model) opts.model = model
+    const res = await client.session.prompt(opts as any)
+    const data = (res as any).data ?? res
+    const err = data.info?.error
+    if (err) throw err
+    return (data.parts ?? [])
+      .filter((p: any) => p.type === "text")
+      .map((p: any) => p.text)
+      .filter(Boolean)
+      .join("")
   }
 
   async function wait(sessionId: string): Promise<void> {
-    for (let i = 0; i < 120; i++) {
-      const statuses: Record<string, { type: string }> = await json("GET", "/session/status") ?? {}
-      const st = statuses[sessionId]
-      if (!st || st.type === "idle") return
-      await new Promise((r) => setTimeout(r, 2000))
-    }
+    await client.v2.session.wait({ sessionID: sessionId })
   }
 
   async function getMessages(sessionId: string): Promise<V2Message[]> {
-    return json("GET", `/session/${sessionId}/message?order=desc&limit=10`) ?? []
+    const { data } = await client.session.messages({ sessionID: sessionId, limit: 10 })
+    return data!
+  }
+
+  async function promptAndWait(sessionId: string, text: string, model?: { providerID: string; modelID: string }): Promise<string> {
+    return prompt(sessionId, text, model)
   }
 
   function extractAssistantText(messages: V2Message[]): string | null {
-    const assistant = [...messages].reverse().find((m) => m.info?.role === "assistant")
+    const assistant = [...messages].reverse().find((m) => m.info.role === "assistant")
     if (!assistant?.parts) return null
     const texts = assistant.parts.filter((p) => p.type === "text").map((p) => p.text ?? "")
     return texts.length > 0 ? texts.join("") : null
   }
 
+  async function abort(sessionId: string): Promise<void> {
+    await client.session.abort({ sessionID: sessionId })
+  }
+
   return {
     listProjects,
+    getCurrentProject,
     createSession,
     listSessions,
+    listModels,
     prompt,
     wait,
     getMessages,
+    promptAndWait,
     extractAssistantText,
+    abort,
   }
 }

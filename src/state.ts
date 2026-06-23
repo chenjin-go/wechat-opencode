@@ -1,8 +1,13 @@
 import { join } from "path"
+import { mkdir } from "fs/promises"
 import { AccountState, ProjectState, RuntimeState } from "./types"
 
 export class StateStore {
   constructor(private dir: string) {}
+
+  private async ensureDir(): Promise<void> {
+    await mkdir(this.dir, { recursive: true })
+  }
 
   private path(name: string): string {
     return join(this.dir, `${name}.json`)
@@ -40,6 +45,7 @@ export class StateStore {
   }
 
   private async write<T>(name: string, data: T): Promise<void> {
+    await this.ensureDir()
     await Bun.write(this.path(name), JSON.stringify(data, null, 2))
   }
 }
