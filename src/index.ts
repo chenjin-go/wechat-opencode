@@ -86,9 +86,16 @@ export async function startBridge(
   await bot.start()
 }
 
+declare const APP_VERSION: string
+
 async function main() {
   const args = process.argv.slice(2)
   const cmd = args[0]
+
+  if (cmd === "--version" || cmd === "-v") {
+    console.log(APP_VERSION)
+    return
+  }
 
   if (cmd === "login") {
     const bot = new WeChatBot({ storage: "file", logLevel: "info" })
@@ -132,14 +139,15 @@ async function main() {
     return
   }
 
-  if (cmd === "help" || !cmd) {
+  if (cmd === "help" || cmd === "--help" || cmd === "-h" || !cmd) {
     console.log(`
-wechat-opencode - 微信与 OpenCode 的桥接工具
+wechat-opencode v${APP_VERSION} - 微信与 OpenCode 的桥接工具
 
 用法:
   wechat-opencode start     启动桥接
   wechat-opencode login     扫码登录
   wechat-opencode help      显示帮助
+  wechat-opencode --version 显示版本号
 `)
     return
   }

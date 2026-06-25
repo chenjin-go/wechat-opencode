@@ -84,6 +84,15 @@ export function createSessionClient(baseUrl: string) {
       .join("")
   }
 
+  async function promptAsync(sessionId: string, text: string, model?: { providerID: string; modelID: string }): Promise<void> {
+    const opts: Record<string, unknown> = {
+      sessionID: sessionId,
+      parts: [{ type: "text", text }],
+    }
+    if (model) opts.model = model
+    await client.session.promptAsync(opts as any)
+  }
+
   async function wait(sessionId: string): Promise<void> {
     await client.v2.session.wait({ sessionID: sessionId })
   }
@@ -115,6 +124,7 @@ export function createSessionClient(baseUrl: string) {
     listSessions,
     listModels,
     prompt,
+    promptAsync,
     wait,
     getMessages,
     promptAndWait,

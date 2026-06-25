@@ -2,27 +2,33 @@
 
 通过微信与 [OpenCode](https://opencode.ai) 交互的 CLI 桥接工具。在微信里给机器人发消息，OpenCode 处理并回复。
 
+## 安装
+
+```bash
+npm install -g @moodcc/wechat-opencode
+```
+
 ## 快速开始
 
 ```bash
-# 安装依赖
-bun install
+# 创建工作目录
+mkdir wechat-opencode-work && cd wechat-opencode-work
 
-# 复制配置并修改
-cp wechat-opencode.example.json wechat-opencode.json
+# 创建配置（参考下方配置说明）
+wechat-opencode --version   # 验证安装
 
 # 扫码登录（仅首次）
-bun run src/index.ts login
+wechat-opencode login
 
 # 启动桥接（登录 + 监听消息）
-bun run src/index.ts start
+wechat-opencode start
 ```
 
 扫码后向你的机器人微信账号发消息即可。
 
 ## 配置
 
-`wechat-opencode.json`（已 gitignore，从 `wechat-opencode.example.json` 复制）：
+在工作目录下创建 `wechat-opencode.json`：
 
 ```json
 {
@@ -40,11 +46,20 @@ bun run src/index.ts start
 }
 ```
 
-`projects` 可选，不填则从 OpenCode 服务自动获取。
+`projects` 可选，不填则从 OpenCode 服务自动获取。`.state_dir` 目录存放登录凭证和运行时状态，建议加入 `.gitignore`。
 
-## 命令
+## CLI 命令
 
-微信中发送：
+| 命令 | 功能 |
+|------|------|
+| `wechat-opencode start` | 启动桥接 |
+| `wechat-opencode login` | 扫码登录 |
+| `wechat-opencode help` | 帮助信息 |
+| `wechat-opencode --version` | 显示版本号 |
+
+## 微信命令
+
+安装启动后，向机器人微信账号发送：
 
 | 命令 | 功能 |
 |------|------|
@@ -58,19 +73,36 @@ bun run src/index.ts start
 
 非命令消息自动发送给 OpenCode AI 处理。
 
-## 测试
+## 开发
 
 ```bash
-bun test              # 全部测试
-bun test --watch      # 监听模式
-bun test tests/config.test.ts  # 单文件
+git clone https://github.com/chenjin-go/wechat-opencode.git
+cd wechat-opencode
+bun install
+
+# 本地运行
+bun run src/index.ts login
+bun run src/index.ts start
+
+# 测试
+bun test
 ```
 
-`tests/commands.test.ts` 和 `tests/session.test.ts` 需要 OpenCode 运行在 `http://127.0.0.1:4096`。
+## 构建发布
+
+```bash
+# 一键构建 4 平台 + npm publish
+bun run release
+
+# 自动升版本并发布
+bun run release:patch   # 0.1.0 → 0.1.1
+bun run release:minor   # 0.1.0 → 0.2.0
+bun run release:major   # 0.1.0 → 1.0.0
+```
 
 ## 技术栈
 
-- **Bun** — TypeScript 运行时
+- **Bun** — TypeScript 运行时 + 打包器
 - **TypeScript** — 语言
 - **@opencode-ai/sdk** — OpenCode API
 - **@wechatbot/wechatbot** — 微信 iLink Bot API

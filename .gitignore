@@ -4,3 +4,4 @@ dist/
 *.local.*
 wechat-opencode.json
 .runtime/
+npm

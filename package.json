@@ -1,12 +1,25 @@
 {
-  "name": "wechat-opencode",
-  "version": "0.1.0",
-  "private": true,
+  "name": "@moodcc/wechat-opencode",
+  "version": "0.1.1",
+  "description": "微信与 OpenCode CLI 桥接工具",
+  "author": "moodcc",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chenjin-go/wechat-opencode.git"
+  },
   "type": "module",
   "scripts": {
     "start": "bun run src/index.ts start",
     "test": "bun test",
-    "test:watch": "bun test --watch"
+    "test:watch": "bun test --watch",
+    "release": "bun run scripts/release.ts",
+    "release:patch": "bun x semver -i patch -- && bun run release",
+    "release:minor": "bun x semver -i minor -- && bun run release",
+    "release:major": "bun x semver -i major -- && bun run release"
+  },
+  "bin": {
+    "wechat-opencode": "scripts/install.js"
   },
   "dependencies": {
     "@opencode-ai/sdk": "^1.17.9",
