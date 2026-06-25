@@ -17,7 +17,7 @@
 ```
 src/
   index.ts    — CLI 入口 + bridge 编排 (start/login)
-  config.ts   — 加载 wechat-opencode.json
+  config.ts   — 默认配置常量
   bridge.ts   — 消息路由 (/cmd → reply, else → enqueue)
   commands.ts — /help /status /new /projects /sessions /model /abort
   session.ts  — OpenCode API 客户端 (封装 @opencode-ai/sdk/v2)
@@ -29,7 +29,7 @@ tests/        — 测试 (bun:test)
 ## Important gotchas
 
 - **Integration tests require running OpenCode**: `tests/commands.test.ts` and `tests/session.test.ts` connect to `http://127.0.0.1:4096`. They will fail without an OpenCode server.
-- **Config is gitignored**: `wechat-opencode.json` in `.gitignore`. Copy from `wechat-opencode.example.json`.
+- **No config file needed**: `wechat-opencode.json` removed. Use `--url` to override OpenCode address.
 - **State dir is `.runtime/`** (gitignored). Contains `account.json`, `project.json`, `runtime.json`.
 - **`BUN_TEST` env guard**: `src/index.ts:151` checks `process.env.BUN_TEST` to prevent `main()` from running during tests.
 - **Design doc in `docs/`** but code has diverged — some modules from design (poller.ts, parser.ts, login.ts, sender.ts) were consolidated into existing files.

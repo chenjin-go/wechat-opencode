@@ -1,9 +1,8 @@
-import { loadConfig } from "./config"
+import { getDefaultConfig } from "./config"
 import { StateStore } from "./state"
 import { createSessionClient } from "./session"
 import { createCommandHandlers } from "./commands"
 import { createRouter } from "./bridge"
-import type { AppConfig } from "./types"
 import { WeChatBot } from "@wechatbot/wechatbot"
 import type { IncomingMessage } from "@wechatbot/wechatbot"
 
@@ -112,7 +111,7 @@ async function main() {
         onScanned: () => console.log("二维码已扫描，请在手机上确认..."),
       },
     })
-    const config = await loadConfig("wechat-opencode.json")
+    const config = getDefaultConfig()
     const state = new StateStore(config.wechat.state_dir)
     await state.setAccount({
       account_id: creds.accountId,
@@ -126,9 +125,14 @@ async function main() {
   }
 
   if (cmd === "start") {
-    const config = await loadConfig("wechat-opencode.json")
+    const urlIdx = args.indexOf("--url")
+    const uIdx = args.indexOf("-u")
+    const urlArg = urlIdx !== -1 ? args[urlIdx + 1] : uIdx !== -1 ? args[uIdx + 1] : undefined
+
+    const config = getDefaultConfig()
+    const baseUrl = urlArg ?? config.opencode.base_url
     const state = new StateStore(config.wechat.state_dir)
-    const session = createSessionClient(config.opencode.base_url)
+    const session = createSessionClient(baseUrl)
 
     const bot = new WeChatBot({
       storage: "file",
@@ -144,10 +148,10 @@ async function main() {
 wechat-opencode v${APP_VERSION} - 微信与 OpenCode 的桥接工具
 
 用法:
-  wechat-opencode start     启动桥接
-  wechat-opencode login     扫码登录
-  wechat-opencode help      显示帮助
-  wechat-opencode --version 显示版本号
+  wechat-opencode start [--url <地址>]  启动桥接
+  wechat-opencode login                扫码登录
+  wechat-opencode help                 显示帮助
+  wechat-opencode --version            显示版本号
 `)
     return
   }

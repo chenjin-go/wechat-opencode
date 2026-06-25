@@ -1,4 +1,4 @@
-import { loadConfig } from "./src/config"
+import { getDefaultConfig } from "./src/config"
 import { StateStore } from "./src/state"
 import { createSessionClient } from "./src/session"
 
@@ -8,7 +8,7 @@ if (!promptText) {
   process.exit(1)
 }
 
-const config = await loadConfig("wechat-opencode.json")
+const config = getDefaultConfig()
 const state = new StateStore(config.wechat.state_dir)
 const session = createSessionClient(config.opencode.base_url)
 
