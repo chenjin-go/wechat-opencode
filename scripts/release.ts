@@ -19,6 +19,21 @@ async function main() {
   const npmTag = process.env.NPM_TAG ?? "latest"
   const npmOtp = process.env.NPM_OTP ?? ""
 
+  const ghPath = (() => {
+    const candidates = [
+      "D:\\DEV\\GitHub CLI\\gh.exe"
+    ]
+    for (const p of candidates) {
+      try { if (Bun.file(p).size > 0) return p } catch {}
+    }
+    const fromPath = process.env.PATH?.split(";").find(p => {
+      try { return Bun.file(`${p}\\gh.exe`).size > 0 } catch { return false }
+    })
+    return fromPath ? `${fromPath}\\gh.exe` : ""
+  })()
+  console.log(`  ghPath: ${ghPath || "(not found)"}`)
+  if (!ghPath) console.log("⚠️  gh CLI 未找到，跳过 GitHub release")
+
   console.log(`=== ${pkg.name} v${version} 发布 ===`)
 
   await rm("dist", { recursive: true, force: true })
@@ -55,17 +70,35 @@ async function main() {
 
   await writeFile("npm/package.json", JSON.stringify(npmPkg, null, 2))
 
-  // publish
-  const otpFlag = npmOtp ? `--otp=${npmOtp}` : ""
-  console.log(`\nPublishing ${pkg.name}@${version} (tag: ${npmTag})...`)
-  const cwd = process.cwd()
-  process.chdir("npm")
-  if (otpFlag) {
-    await $`npm publish --access public --tag=${npmTag} ${otpFlag}`
+  // publish (check first)
+  const npmView = await $`npm view ${pkg.name}@${version} version --json`.quiet().nothrow()
+  if (npmView.exitCode === 0 && npmView.text().trim()) {
+    console.log(`⏭️  npm ${pkg.name}@${version} 已存在，跳过`)
   } else {
-    await $`npm publish --access public --tag=${npmTag}`
+    const otpFlag = npmOtp ? `--otp=${npmOtp}` : ""
+    console.log(`\nPublishing ${pkg.name}@${version} (tag: ${npmTag})...`)
+    const cwd = process.cwd()
+    process.chdir("npm")
+    if (otpFlag) {
+      await $`npm publish --access public --tag=${npmTag} ${otpFlag}`
+    } else {
+      await $`npm publish --access public --tag=${npmTag}`
+    }
+    process.chdir(cwd)
   }
-  process.chdir(cwd)
+
+  // github release (check first)
+  const exeAsset = join("dist", `wechat-opencode-${TARGETS[0].label}${TARGETS[0].ext}`)
+  if (ghPath) {
+    const ghView = await $`${ghPath} release view v${version} --json tagName`.quiet().nothrow()
+    if (ghView.exitCode === 0) {
+      console.log(`⏭️  GitHub tag v${version} 已存在，跳过`)
+    } else {
+      console.log(`\n🏷️  创建 GitHub release v${version}...`)
+      await $`${ghPath} release create v${version} ${exeAsset} --title "v${version}" --generate-notes`
+      console.log(`✅ GitHub release v${version} 已创建`)
+    }
+  }
 
   console.log(`\n✅ ${pkg.name}@${version} 已发布 [win32-x64]`)
 }
